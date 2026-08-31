@@ -1,0 +1,1168 @@
+<!-- rage-rl · reinforcement learning on a platformer that cheats. Single file, no deps.
+     R = fullscreen view, ? = key list. -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rage-RL — I Gave An AI Anger Issues</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0f1e; --panel:#121a2e; --panel-2:#1a2340; --line:#232e50; --line-2:#33406e;
+    --ink:#e9eef9; --muted:#8593b6;
+    --angry:#ff4d5e;   /* the angry agent */
+    --calm:#3fe0c5;    /* the control run */
+    --warn:#ffc857;    /* goal / flag */
+    --champ:#a78bfa;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Space Grotesk",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1180px;margin:0 auto;padding:22px 18px 60px}
+  header{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+  .logo{font-weight:700;font-size:26px;letter-spacing:-.5px;line-height:1}
+  .logo b{color:var(--angry)}
+  .res{font-family:"JetBrains Mono",monospace;font-size:11.5px;color:var(--muted);letter-spacing:.4px}
+
+  /* one canvas holds the whole picture: world, HUD, anger bar, graph */
+  .stage{position:relative;border:1px solid var(--line);border-radius:14px;overflow:hidden;
+    background:#141033}
+  #game{display:block;width:100%;height:auto}
+
+  .lower{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .box h3{margin:0 0 10px;font-size:13px;font-weight:600;color:var(--muted);
+    font-family:"JetBrains Mono",monospace;text-transform:uppercase;letter-spacing:1.2px}
+  .controls{display:flex;flex-direction:column}
+
+  .field{display:flex;align-items:center;justify-content:space-between;gap:16px;
+    min-height:44px;padding:4px 0;border-bottom:1px solid #1b2440}
+  .field:last-child{border-bottom:0}
+  .field .lbl{font-size:12.5px;color:var(--ink);font-weight:500;line-height:1.3}
+  .field .sub{display:block;font-size:11px;color:var(--muted);font-weight:400;margin-top:2px}
+  .field .ctl{display:flex;align-items:center;gap:10px;flex:0 0 auto}
+  .val{font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--muted);
+    min-width:46px;text-align:right;font-variant-numeric:tabular-nums}
+
+  .segs{display:inline-flex;background:#0c1223;border:1px solid var(--line);border-radius:9px;padding:3px}
+  .seg{cursor:pointer;text-align:center;font-family:"JetBrains Mono",monospace;font-size:11.5px;
+    padding:5px 11px;border-radius:6px;background:transparent;color:var(--muted);transition:.12s;user-select:none}
+  .seg:hover{color:var(--ink)}
+  .seg.on{background:var(--panel-2);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line-2)}
+
+  input[type=range]{-webkit-appearance:none;appearance:none;width:140px;height:20px;
+    background:transparent;cursor:pointer;margin:0}
+  input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:99px;background:var(--line-2)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;margin-top:-5px;
+    border-radius:50%;background:var(--ink);border:0;transition:background .12s}
+  input[type=range]::-moz-range-track{height:4px;border-radius:99px;background:var(--line-2)}
+  input[type=range]::-moz-range-thumb{width:14px;height:14px;border:0;border-radius:50%;background:var(--ink)}
+  input[type=range]:hover::-webkit-slider-thumb{background:var(--calm)}
+  input[type=range]:hover::-moz-range-thumb{background:var(--calm)}
+  input[type=text]{background:#0c1223;border:1px solid var(--line);color:var(--ink);
+    border-radius:8px;padding:7px 10px;font-family:"JetBrains Mono",monospace;font-size:12px;width:140px}
+  input:focus-visible,.seg:focus-visible,.btn:focus-visible{outline:2px solid var(--calm);outline-offset:2px}
+
+  .btn{cursor:pointer;font-family:"JetBrains Mono",monospace;font-size:11.5px;
+    padding:8px 11px;border-radius:8px;border:1px solid var(--line);background:#0c1223;color:var(--ink);
+    transition:.12s;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+  .btn:hover:not(:disabled){border-color:var(--line-2);background:var(--panel-2)}
+  .btn.primary{background:var(--champ);border-color:var(--champ);color:#150a2f;font-weight:600}
+  .btn.primary:hover:not(:disabled){filter:brightness(1.12)}
+  .btn.hot{border-color:#2c6058;color:var(--calm)}
+  .btn.hot:hover:not(:disabled){border-color:var(--calm);background:#0f2a28}
+  .btn:disabled{opacity:.35;cursor:not-allowed}
+  .btnrow{display:flex;gap:8px;flex-wrap:wrap;padding-top:14px}
+  .note{color:var(--muted);font-size:12px;line-height:1.55;padding-top:12px}
+  .note b{color:var(--ink);font-weight:600}
+  .sep{height:1px;background:var(--line);margin:12px 0 0}
+  .mono{font-family:"JetBrains Mono",monospace}
+  @media(max-width:820px){.lower{grid-template-columns:1fr}}
+  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+
+  /* fullscreen view (R): drop the panels and let the canvas fill the window */
+  body.big{overflow:hidden;background:#0a0a14}
+  body.big .wrap{max-width:none;width:100vw;height:100vh;margin:0;padding:0}
+  body.big header,body.big .lower{display:none!important}
+  body.big .stage{width:100vw;height:100vh;border:0;border-radius:0}
+  body.big #game{width:100vw;height:100vh}
+
+  #hint{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);
+    font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--ink);
+    background:#0a1122ee;border:1px solid var(--line-2);padding:9px 14px;border-radius:10px;
+    opacity:0;transition:opacity .4s;pointer-events:none;z-index:50;white-space:nowrap;
+    max-width:94vw;overflow:hidden;text-overflow:ellipsis}
+  #hint.show{opacity:1}
+  #hint b{color:var(--calm);font-weight:600}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="logo">RAGE·<b>RL</b></div>
+    <div class="res" id="phase"></div>
+  </header>
+
+  <div class="stage">
+    <canvas id="game"></canvas>
+  </div>
+
+  <div class="lower">
+    <div class="box controls">
+      <h3>Run</h3>
+      <div class="field">
+        <div class="lbl">Simulation speed</div>
+        <div class="ctl">
+          <div class="segs" id="speed">
+            <div class="seg" data-s="1">1×</div><div class="seg" data-s="4">4×</div>
+            <div class="seg on" data-s="16">16×</div><div class="seg" data-s="220">turbo</div>
+          </div>
+        </div>
+      </div>
+      <div class="field">
+        <div class="lbl">Seed</div>
+        <div class="ctl"><input type="text" id="seed" value="rage-5"></div>
+      </div>
+      <div class="field">
+        <div class="lbl">Learning rate<span class="sub">how hard one death changes its mind</span></div>
+        <div class="ctl"><input type="range" id="alpha" min="2" max="60" value="18">
+          <span class="val" id="alpha-val">0.18</span></div>
+      </div>
+      <div class="field">
+        <div class="lbl">Attempt time limit<span class="sub">running out of time counts as a death</span></div>
+        <div class="ctl"><input type="range" id="cap" min="300" max="3000" step="100" value="600">
+          <span class="val" id="cap-val">600</span></div>
+      </div>
+      <div class="btnrow">
+        <button class="btn primary" id="pause">Pause</button>
+        <button class="btn" id="restart">Restart</button>
+        <button class="btn" id="play">Play it yourself</button>
+      </div>
+    </div>
+
+    <div class="box controls">
+      <h3>Anger</h3>
+      <div class="field">
+        <div class="lbl">Anger per death<span class="sub">100 ÷ this = deaths until it quits</span></div>
+        <div class="ctl"><input type="range" id="ad" min="2" max="60" value="10">
+          <span class="val" id="ad-val">1.0</span></div>
+      </div>
+      <div class="field">
+        <div class="lbl">Calm-down per new record</div>
+        <div class="ctl"><input type="range" id="ar" min="0" max="200" value="60">
+          <span class="val" id="ar-val">6.0</span></div>
+      </div>
+      <div class="field">
+        <div class="lbl">Cool-down per attempt</div>
+        <div class="ctl"><input type="range" id="ac" min="0" max="100" value="15">
+          <span class="val" id="ac-val">0.15</span></div>
+      </div>
+      <div class="field">
+        <div class="lbl">Max exploration<span class="sub">how random it gets at 100 anger</span></div>
+        <div class="ctl"><input type="range" id="emax" min="10" max="95" value="60">
+          <span class="val" id="emax-val">60%</span></div>
+      </div>
+      <div class="field">
+        <div class="lbl">Anger curve<span class="sub">high = stays calm, then snaps late</span></div>
+        <div class="ctl"><input type="range" id="epow" min="1" max="14" value="9">
+          <span class="val" id="epow-val">9</span></div>
+      </div>
+      <div class="field">
+        <div class="lbl">Tantrum length<span class="sub">decisions it commits to one random move</span></div>
+        <div class="ctl"><input type="range" id="stick" min="1" max="24" value="10">
+          <span class="val" id="stick-val">10</span></div>
+      </div>
+      <div class="field">
+        <div class="lbl">Quit at 100</div>
+        <div class="ctl">
+          <div class="segs" id="quit">
+            <div class="seg on" data-q="1">on</div><div class="seg" data-q="0">off</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="lower">
+    <div class="box controls">
+      <h3>The three cheats</h3>
+      <div class="field">
+        <div class="lbl">Cheats switch on after<span class="sub">attempts of the fair level — it needs habits to lose</span></div>
+        <div class="ctl"><input type="range" id="cat" min="0" max="1500" step="50" value="600">
+          <span class="val" id="cat-val">600</span></div>
+      </div>
+      <div class="field">
+        <div class="lbl">1 · Checkpoint burns out after</div>
+        <div class="ctl"><input type="range" id="cpn" min="1" max="20" value="4">
+          <span class="val" id="cpn-val">4</span></div>
+      </div>
+      <div class="field">
+        <div class="lbl">2 · Platform crumbles after<span class="sub">frames after you land on it</span></div>
+        <div class="ctl"><input type="range" id="fuse" min="4" max="120" value="22">
+          <span class="val" id="fuse-val">22</span></div>
+      </div>
+      <div class="field">
+        <div class="lbl">3 · Flag runs away</div>
+        <div class="ctl">
+          <div class="segs" id="flagruns">
+            <div class="seg on" data-f="1">on</div><div class="seg" data-f="0">off</div>
+          </div>
+        </div>
+      </div>
+      <div class="field">
+        <div class="lbl">&nbsp;&nbsp;&nbsp;Stand still before it returns<span class="sub">frames — the whole difficulty is here</span></div>
+        <div class="ctl"><input type="range" id="fwait" min="2" max="90" value="48">
+          <span class="val" id="fwait-val">48</span></div>
+      </div>
+      <div class="field">
+        <div class="lbl">&nbsp;&nbsp;&nbsp;Flag walk speed</div>
+        <div class="ctl"><input type="range" id="fspd" min="5" max="80" value="60">
+          <span class="val" id="fspd-val">6.0</span></div>
+      </div>
+    </div>
+
+    <div class="box controls">
+      <h3>Angry vs calm</h3>
+      <div class="field">
+        <div class="lbl">Calm agent exploration<span class="sub">0% = it never deviates from its plan</span></div>
+        <div class="ctl"><input type="range" id="ceps" min="0" max="200" value="0">
+          <span class="val" id="ceps-val">0%</span></div>
+      </div>
+      <div class="btnrow" style="padding-top:6px">
+        <button class="btn hot" id="vs">Angry vs calm</button>
+        <button class="btn" id="single">Back to single</button>
+      </div>
+      <div class="btnrow">
+        <button class="btn" id="map">Decision map</button>
+        <button class="btn" id="graph">Graph</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="hint"><b>R</b> fullscreen · <b>P</b> pause · <b>S</b> speed · <b>V</b> vs calm · <b>M</b> map · <b>G</b> graph · <b>H</b> hud · <b>?</b> keys</div>
+
+<script>
+function hash32(s){let h=2166136261>>>0;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return h>>>0;}
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);
+  t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+let SEED='rage-1';
+
+/* ---------- level: one screen, no scrolling. Ground spans; the gaps are pits. --------- */
+const WORLD_W=1700, WORLD_H=600, FLOOR_Y=470;
+const START_X=70, START_Y=FLOOR_Y-34;
+
+const FLOOR=[ {x:0,w:440}, {x:530,w:170}, {x:900,w:800} ];
+const SPIKES=[ {x:250,w:56}, {x:1000,w:48}, {x:1130,w:48} ];
+const CRUMBLE={x:760,y:428,w:110,h:16};
+const CHECKPOINT={x:942,y:FLOOR_Y-52,w:12,h:52};
+/* The level ends in a cliff and the flag stands against it, so winning the fair game is
+   "hold right until you hit the wall". If the flag stood in the open the agent would have to
+   learn to brake in front of it — i.e. to stand still — which is the move cheat 3 must hide. */
+const CLIFF_TOP=200;
+const WALL={x:1520,y:CLIFF_TOP,w:420,h:WORLD_H-CLIFF_TOP};
+const FLAG_BASE=1508, FLAG_AWAY=1600, FLAG_TRIGGER=1200;
+
+const PW=22, PH=30;/* FRIC_STOP: letting go stops you in ~5 frames, so standing still is a move that can be
+   completed inside one or two decisions. Otherwise nothing can ever stumble on it. */
+const GRAV=0.9, JUMP_V=-15.5, ACC=1.6, FRIC=0.86, FRIC_STOP=0.55, MAXVX=5.4, MAXVY=18;
+const REPEAT=6;
+/* ---------- agent: tabular Q-learning ----------------------------------------------
+   State = which cell of the level, airborne or not, and how long it has been holding still.
+   It is deliberately NOT told what the flag is doing: that way switching the cheats on drops
+   it into states it already has habits in, instead of a blank slate. */
+const CELL=40, CX=Math.ceil(WORLD_W/CELL)+1, CY=Math.ceil(WORLD_H/CELL)+1;
+const STILL_BUCKETS=4, STILL_STEP=8;
+const NSTATE=CX*CY*3*STILL_BUCKETS, NACT=6;
+const ACTS=[[0,0],[-1,0],[1,0],[0,1],[-1,1],[1,1]];
+const ACT_NAME=['stand still','left','right','jump','jump left','jump right'];
+const A_IDLE=0;
+
+/* R_TIME is zero on purpose. If wasting time cost anything, an endless futile chase would
+   converge below Q0 and "stand still" — never tried, still at Q0 — would win by elimination. */
+const GAMMA=0.99;
+const R_DEATH=-12, R_WIN=120, R_TIME=0, R_PROG=0.03;
+
+/* Every move starts rated slightly bad, and doing nothing starts rated worst of all.
+   That single assumption is what the whole simulation is about. */
+const Q0=-1.0;
+const Q0_IDLE=-2.5;
+
+class Agent{
+  /* jitter breaks ties: without it argmax silently always returns action 0 = stand still */
+  constructor(rnd){
+    this.q=new Float32Array(NSTATE*NACT);
+    for(let i=0;i<this.q.length;i++)
+      this.q[i]=(i%NACT===0?Q0_IDLE:Q0)+(rnd?(rnd()-0.5)*0.02:0);
+    this.seen=new Uint8Array(NSTATE);
+  }
+  best(s){ const o=s*NACT; let b=0,bv=this.q[o];
+    for(let a=1;a<NACT;a++) if(this.q[o+a]>bv){bv=this.q[o+a];b=a;} return b; }
+  bestVal(s){ const o=s*NACT; let bv=this.q[o];
+    for(let a=1;a<NACT;a++) if(this.q[o+a]>bv) bv=this.q[o+a]; return bv; }
+  act(s,eps,rnd){ return rnd()<eps ? (rnd()*NACT)|0 : this.best(s); }
+  learn(s,a,r,s2,terminal,alpha){
+    const target = terminal ? r : r + GAMMA*this.bestVal(s2);
+    const i=s*NACT+a;
+    this.q[i] += alpha*(target-this.q[i]);
+    this.seen[s]=1;
+  }
+  clone(){ const a=new Agent(null); a.q.set(this.q); a.seen.set(this.seen); return a; }
+}
+
+/* ---------- lab: one agent, one world, one anger meter -------------------------------
+   Defaults come from a sweep over ten seeds, scored on: the calm agent must never solve it,
+   and the angry one usually should, late. */
+const cfg={
+  alpha:0.18, cap:600,
+  angerDeath:1.0, angerRecord:6.0, angerCool:0.15, angerWin:60,
+  epsMin:0.002, epsMax:0.60, epsPow:9, calmEps:0,
+  quitOn:true, cheats:false, cheatsAt:600, flagRuns:true, cpMax:4, fuse:22, flagWait:48, flagSpeed:6.0, stick:10
+};
+
+class Lab{
+  constructor(name,label,color,calm,agent){
+    this.name=name; this.label=label; this.color=color; this.calm=!!calm;
+    this.rng=mulberry32(hash32(SEED+':'+name));
+    this.agent=agent||new Agent(mulberry32(hash32(SEED+':init:'+name)));
+    this.attempt=0; this.anger=0; this.bestPct=0; this.deaths=0;
+    this.quit=false; this.won=false; this.wins=0; this.winAttempt=null;
+    this.winWasRandom=null;
+    this.histBest=[]; this.histAnger=[]; this.flash=0; this.flashText='';
+    this.cpTouched=0;    this.reset();
+  }
+  eps(){ return this.calm ? cfg.calmEps
+       : cfg.epsMin + (cfg.epsMax-cfg.epsMin)*Math.pow(this.anger/100,cfg.epsPow); }
+  deathsLeft(){ return Math.max(0,Math.ceil((100-this.anger)/Math.max(.01,cfg.angerDeath))); }
+
+  reset(){    this.frame=0; this.done=false; this.dead=false; this.win=false;
+    this.p={x:this.spawnX??START_X, y:this.spawnY??START_Y, vx:0, vy:0, ground:false};
+    this.flag={x:FLAG_BASE, y:FLOOR_Y-64, away:false, still:0, coming:false};
+    this.crumble={armed:true, fuse:-1, gone:false, shake:0};
+    this.prevS=-1; this.prevA=0; this.prevRandom=false; this.rAcc=0; this.decTick=0;
+    this.prevProx=Math.abs(FLAG_BASE-this.p.x);
+    this.maxX=this.p.x; this.timedOut=false; this.stillF=0; this.stick=0;
+    this.trail=[];
+  }
+  fullReset(){ this.spawnX=START_X; this.spawnY=START_Y; this.cpTouched=0; this.reset(); }
+
+  state(){
+    const gx=Math.max(0,Math.min(CX-1,(this.p.x/CELL)|0));
+    const gy=Math.max(0,Math.min(CY-1,(this.p.y/CELL)|0));
+    const vs=this.p.ground?0:(this.p.vy<0?1:2);
+    const sb=Math.min(STILL_BUCKETS-1,(this.stillF/STILL_STEP)|0);
+    return ((gx*CY+gy)*3+vs)*STILL_BUCKETS+sb;
+  }
+
+  solids(){
+    const s=[];
+    for(const f of FLOOR) s.push({x:f.x,y:FLOOR_Y,w:f.w,h:WORLD_H-FLOOR_Y});
+    s.push(WALL);
+    if(!this.crumble.gone) s.push(CRUMBLE);
+    return s;
+  }
+  step(){
+    if(this.done||this.quit) return;
+    this.frame++;
+
+    if(this.decTick<=0){
+      const s2=this.state();
+      if(this.prevS>=0) this.agent.learn(this.prevS,this.prevA,this.rAcc,s2,false,cfg.alpha);
+      const e=this.eps();
+      /* Sticky exploration. Anger raises epsilon AND makes the agent commit: a random move is
+         held for up to `stick` decisions instead of one. Same amount of randomness, completely
+         different consequences — nothing here can be discovered in a single move.
+         (Temporally-extended epsilon-greedy.) */
+      if(this.stick>0){ this.stick--; }
+      else if(this.rng()<e){
+        this.prevA=(this.rng()*NACT)|0; this.prevRandom=true;
+        this.stick = 1 + ((this.rng()*cfg.stick)|0);
+      } else {
+        this.prevA=this.agent.best(s2); this.prevRandom=false; this.stick=0;
+      }
+      this.prevS = s2; this.rAcc=0; this.decTick=REPEAT;
+      this.lastEps=e;
+    }
+    this.decTick--;
+
+    const [dx,jmp]=ACTS[this.prevA];
+    const p=this.p;
+    if(dx===0 && !jmp && p.ground) this.stillF++; else this.stillF=0;
+
+    p.vx += dx*ACC; p.vx *= (dx===0 ? FRIC_STOP : FRIC);
+    if(p.vx>MAXVX)p.vx=MAXVX; if(p.vx<-MAXVX)p.vx=-MAXVX;
+    if(Math.abs(p.vx)<0.05) p.vx=0;
+    if(jmp && p.ground){ p.vy=JUMP_V; p.ground=false; }
+    p.vy += GRAV; if(p.vy>MAXVY)p.vy=MAXVY;
+
+    const sol=this.solids();
+    p.x += p.vx;
+    for(const s of sol){
+      if(p.x<s.x+s.w && p.x+PW>s.x && p.y<s.y+s.h && p.y+PH>s.y){
+        p.x = p.vx>0 ? s.x-PW : s.x+s.w; p.vx=0;
+      }
+    }
+    p.ground=false;
+    p.y += p.vy;
+    for(const s of sol){
+      if(p.x<s.x+s.w && p.x+PW>s.x && p.y<s.y+s.h && p.y+PH>s.y){
+        if(p.vy>0){ p.y=s.y-PH; p.ground=true;
+          if(cfg.cheats && s===CRUMBLE && this.crumble.armed){ this.crumble.armed=false; this.crumble.fuse=cfg.fuse; }
+        } else { p.y=s.y+s.h; }
+        p.vy=0;
+      }
+    }
+    if(p.x<0){p.x=0;p.vx=0;} if(p.x>WORLD_W-PW){p.x=WORLD_W-PW;p.vx=0;}
+    if(this.crumble.fuse>0){ this.crumble.fuse--; this.crumble.shake=1;
+      if(this.crumble.fuse===0) this.crumble.gone=true; }
+
+    /* CHEAT 3. The flag hops onto the cliff when you move and walks back when you stop.
+       Chasing it is never punished, only futile — nothing ever tells the agent it is wrong. */
+    const f=this.flag;
+    if(cfg.cheats){
+      const near = cfg.flagRuns && p.x > FLAG_TRIGGER;
+      /* "still" = no input, feet on the ground. Not "zero velocity": shoving yourself into
+         a wall is zero velocity too, and that would hand the agent the answer for free. */
+      const moving = dx!==0 || jmp || !p.ground;
+      if(near){
+        if(moving){          f.coming=false; f.still=0; f.x=FLAG_AWAY; f.y=CLIFF_TOP-64; f.away=true;
+        } else {
+          f.still=this.stillF;
+          if(this.stillF>=cfg.flagWait){
+            if(!f.coming){ f.coming=true; f.x=WALL.x-6; f.y=FLOOR_Y-64; }
+            f.x -= cfg.flagSpeed;
+            if(f.x < p.x+PW/2) f.x = p.x+PW/2;
+          }
+        }
+      } else { f.coming=false; f.still=0; f.x=FLAG_BASE; f.y=FLOOR_Y-64; f.away=false; }
+    }
+
+    /* Pure distance-to-flag delta, not a high-water mark: running back and forth nets out to
+       zero, and chasing a flag that keeps its lead pays exactly nothing. */
+    let r = R_TIME;
+    const prox = Math.abs(f.x - (p.x+PW/2));
+    r += (this.prevProx-prox)*R_PROG; this.prevProx=prox;
+    if(p.x>this.maxX) this.maxX=p.x;
+
+    const cpAlive = !cfg.cheats || this.cpTouched < cfg.cpMax;
+    if(cpAlive && p.x<CHECKPOINT.x+CHECKPOINT.w && p.x+PW>CHECKPOINT.x &&
+       p.y<CHECKPOINT.y+CHECKPOINT.h && p.y+PH>CHECKPOINT.y){
+      if(this.spawnX!==CHECKPOINT.x-30){
+        this.spawnX=CHECKPOINT.x-30; this.spawnY=FLOOR_Y-PH-2;
+        if(cfg.cheats) this.cpTouched++;   /* only count while cheat 1 exists */
+      }
+    }
+
+    let died=false;
+    for(const s of SPIKES){
+      if(p.x<s.x+s.w && p.x+PW>s.x && p.y+PH>FLOOR_Y-14 && p.y<FLOOR_Y) died=true;
+    }
+    if(p.y>WORLD_H+40) died=true;
+    /* running out of time pays nothing and costs nothing, but it still angers the meter */
+    if(this.frame>cfg.cap){ this.timedOut=true; }
+
+    const canCatch = !(cfg.cheats&&cfg.flagRuns) || f.coming;   /* no grabbing it mid-flight */
+    const won = canCatch && Math.abs((p.x+PW/2)-f.x)<18 && p.y+PH>FLOOR_Y-90;
+
+    if(this.trail.length<4000 && this.frame%2===0) this.trail.push(p.x+PW/2,p.y+PH/2);
+
+    if(won){
+      this.agent.learn(this.prevS,this.prevA,this.rAcc+r+R_WIN,0,true,cfg.alpha);
+      this.endAttempt(true); return;
+    }
+    if(died){
+      this.agent.learn(this.prevS,this.prevA,this.rAcc+r+R_DEATH,0,true,cfg.alpha);
+      this.endAttempt(false); return;
+    }
+    if(this.timedOut){
+      this.agent.learn(this.prevS,this.prevA,this.rAcc+r,0,true,cfg.alpha);
+      this.endAttempt(false); return;
+    }
+    this.rAcc += r;
+  }
+
+  endAttempt(win){
+    this.attempt++;
+    const pct = Math.round(Math.min(100, (this.maxX/(FLAG_BASE-START_X))*100));
+    const newRecord = pct>this.bestPct;
+    if(newRecord) this.bestPct=pct;
+
+    if(win){
+      this.wins++;
+      if(this.winAttempt===null){ this.winAttempt=this.attempt; this.winWasRandom=this.prevRandom;
+        this.flash=170; this.flashText='LEVEL COMPLETE'; }
+      this.anger -= cfg.angerWin;
+      this.spawnX=START_X; this.spawnY=START_Y;
+    }else{
+      this.deaths++;
+      this.anger += cfg.angerDeath;
+      if(newRecord) this.anger -= cfg.angerRecord;
+    }
+    this.anger -= cfg.angerCool;
+    if(this.anger<0) this.anger=0;
+    if(this.anger>100) this.anger=100;
+
+    this.histBest.push(pct); this.histAnger.push(this.anger);
+    if(this.histBest.length>6000){ this.histBest.shift(); this.histAnger.shift(); }
+
+    if(cfg.quitOn && !this.calm && this.anger>=100){
+      this.quit=true; this.flash=999; this.flashText='THE AI QUIT';
+    }
+    this.reset();
+  }
+}
+
+
+const $=id=>document.getElementById(id);
+const cv=$('game'), ctx=cv.getContext('2d');
+const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const SKY0='#141033', SKY1='#4a2a63', SKY2='#a34b63', GRND='#2a1f3d', GLINE='#42335c';
+
+let CW=0, CH=0, DPR=1;
+function fit(){
+  DPR = Math.min(2, window.devicePixelRatio||1);
+  const r = cv.getBoundingClientRect();
+  const w = Math.max(320, Math.round(r.width)), h = Math.max(200, Math.round(r.height||r.width/2.45));
+  const bw = Math.round(w*DPR), bh = Math.round(h*DPR);
+  if(cv.width!==bw||cv.height!==bh){ cv.width=bw; cv.height=bh; }
+  if(!document.body.classList.contains('rec')) cv.style.height = Math.round(w/2.45)+'px';
+  else cv.style.height='100vh';
+  CW=cv.width; CH=cv.height;
+}
+addEventListener('resize',fit);
+
+/* ---------- scenery ------------------------------------------------------------------
+   The level is 1700 wide and ~120 tall where anything happens. Three ridge lines, a star
+   field and a body of earth turn the leftover two thirds of the frame into somewhere.
+   Generated once, deterministically, at load. */
+const SCN=(function(){
+  const rnd=mulberry32(0x5EED17);
+  const ridge=(baseY,amp,step,rough)=>{
+    const pts=[];
+    for(let x=-700;x<=2400;x+=step){
+      const y = baseY
+        - amp*(0.55+0.45*Math.sin(x*0.0016+rough))
+        - amp*0.35*Math.sin(x*0.0047+rough*2.3)
+        - amp*0.14*Math.sin(x*0.0131+rough*4.1);
+      pts.push(x,y);
+    }
+    return pts;
+  };
+  const stars=[];
+  for(let i=0;i<170;i++)
+    stars.push({x:-700+rnd()*3100, y:-420+rnd()*700, r:0.8+rnd()*1.8, a:0.3+rnd()*0.7, t:rnd()*7});
+  const clouds=[];
+  for(let i=0;i<7;i++)
+    clouds.push({x:-400+rnd()*2500, y:40+rnd()*230, w:280+rnd()*460, h:14+rnd()*24,
+                 a:0.05+rnd()*0.07, sp:0.05+rnd()*0.12});
+  const trees=[], rocks=[], birds=[];
+  for(let i=0;i<14;i++){
+    const x=-250+rnd()*2100;
+    trees.push({x, y:FLOOR_Y-12-rnd()*26, h:44+rnd()*44});
+  }
+  for(let i=0;i<16;i++) rocks.push({x:-200+rnd()*2000, y:FLOOR_Y-6-rnd()*26, w:7+rnd()*16});
+  for(let i=0;i<5;i++) birds.push({x:rnd()*2000, y:60+rnd()*180, sp:0.28+rnd()*0.3, p:rnd()*7});
+  return {
+    trees, rocks, birds,
+    far : ridge(FLOOR_Y+10, 355, 26, 0.7),
+    mid : ridge(FLOOR_Y+10, 218, 22, 2.9),
+    near: ridge(FLOOR_Y+6,   96, 18, 5.2),
+    stars, clouds
+  };
+})();
+function fillRidge(pts,color,wx0,wx1,wy1){
+  ctx.fillStyle=color; ctx.beginPath(); ctx.moveTo(wx0,wy1);
+  for(let i=0;i<pts.length;i+=2) ctx.lineTo(pts[i],pts[i+1]);
+  ctx.lineTo(wx1,wy1); ctx.closePath(); ctx.fill();
+}
+
+/* The frame is wider than the level is tall, so the scale comes from the width and there is
+   always spare vertical room. Anchor the horizon at 74% rather than centring the world box. */
+const HORIZON=0.74;
+function camera(vp){
+  const s = vp.w/(WORLD_W+60);
+  return {s, ox: vp.x+vp.w/2 - WORLD_W/2*s, oy: vp.y+vp.h*HORIZON - FLOOR_Y*s, vp};
+}
+function drawWorld(lab,cam){
+  const {s,ox,oy,vp}=cam;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(vp.x,vp.y,vp.w,vp.h); ctx.clip();
+  ctx.translate(ox,oy); ctx.scale(s,s);
+  const wx0=(vp.x-ox)/s, wx1=(vp.x+vp.w-ox)/s, wy0=(vp.y-oy)/s, wy1=(vp.y+vp.h-oy)/s;
+
+  const g=ctx.createLinearGradient(0,wy0,0,FLOOR_Y);
+  g.addColorStop(0,'#150c2c'); g.addColorStop(.42,'#3a1a4c');
+  g.addColorStop(.78,'#8c3a5f'); g.addColorStop(1,'#d96a5c');
+  ctx.fillStyle=g; ctx.fillRect(wx0,wy0,wx1-wx0,FLOOR_Y-wy0);
+
+  for(const st of SCN.stars){
+    if(st.y<wy0-10||st.y>FLOOR_Y-150) continue;
+    const fade=Math.max(0,Math.min(1,(FLOOR_Y-150-st.y)/240));
+    ctx.globalAlpha=st.a*fade*(0.65+0.35*Math.sin(frameNo*0.03+st.t));
+    ctx.fillStyle='#fff5e0';
+    ctx.beginPath(); ctx.arc(st.x,st.y,st.r,0,7); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+
+  ctx.save();
+  const sunG=ctx.createRadialGradient(520,120,10,520,120,230);
+  sunG.addColorStop(0,'rgba(255,206,150,.40)'); sunG.addColorStop(1,'rgba(255,206,150,0)');
+  ctx.fillStyle=sunG; ctx.beginPath(); ctx.arc(520,120,230,0,7); ctx.fill();
+  ctx.shadowColor='#ffd9a0'; ctx.shadowBlur=40; ctx.fillStyle='#fff0d4';
+  ctx.beginPath(); ctx.arc(520,120,30,0,7); ctx.fill();
+  ctx.restore();
+
+  for(const c of SCN.clouds){
+    const cx=c.x+((frameNo*c.sp)%3200)-400;
+    ctx.globalAlpha=c.a; ctx.fillStyle='#ffd2b0';
+    ctx.beginPath(); ctx.ellipse(cx,c.y,c.w/2,c.h/2,0,0,7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(cx-c.w*0.22,c.y+c.h*0.4,c.w/3,c.h/2.6,0,0,7); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+
+  fillRidge(SCN.far ,'#2b1442',wx0,wx1,FLOOR_Y+4);
+  fillRidge(SCN.mid ,'#351a4a',wx0,wx1,FLOOR_Y+4);
+  fillRidge(SCN.near,'#40204f',wx0,wx1,FLOOR_Y+4);
+  ctx.fillStyle='#2c1638';
+  for(const t of SCN.trees){    ctx.fillRect(t.x-1.6,t.y-t.h*0.28,3.2,t.h*0.28);
+    for(let k=0;k<3;k++){
+      const ty=t.y-t.h*(0.22+k*0.26), tw=t.h*(0.34-k*0.075);
+      ctx.beginPath(); ctx.moveTo(t.x,ty-t.h*0.36);
+      ctx.lineTo(t.x+tw,ty); ctx.lineTo(t.x-tw,ty); ctx.closePath(); ctx.fill();
+    }
+  }
+  for(const r of SCN.rocks){
+    ctx.beginPath(); ctx.ellipse(r.x,r.y,r.w,r.w*0.55,0,Math.PI,0); ctx.fill();
+  }
+  ctx.strokeStyle='rgba(30,16,42,.75)'; ctx.lineWidth=1.8;
+  for(const b of SCN.birds){
+    const bx=b.x+((frameNo*b.sp)%2600)-500, fl=Math.sin(frameNo*0.11+b.p)*3.4;
+    ctx.beginPath();
+    ctx.moveTo(bx-7,b.y+fl); ctx.quadraticCurveTo(bx-3,b.y-2+fl*0.4,bx,b.y+fl*0.2);
+    ctx.quadraticCurveTo(bx+3,b.y-2+fl*0.4,bx+7,b.y+fl); ctx.stroke();
+  }
+  const hg=ctx.createLinearGradient(0,FLOOR_Y-52,0,FLOOR_Y);
+  hg.addColorStop(0,'rgba(255,140,110,0)'); hg.addColorStop(1,'rgba(255,150,110,.20)');
+  ctx.fillStyle=hg; ctx.fillRect(wx0,FLOOR_Y-52,wx1-wx0,52);
+
+  const eg=ctx.createLinearGradient(0,FLOOR_Y,0,FLOOR_Y+330);
+  eg.addColorStop(0,'#3d2148'); eg.addColorStop(.30,'#2a1636'); eg.addColorStop(1,'#140b1f');
+  ctx.fillStyle=eg; ctx.fillRect(wx0,FLOOR_Y,wx1-wx0,wy1-FLOOR_Y);
+  ctx.globalAlpha=0.5;
+  for(let i=0;i<7;i++){
+    const y=FLOOR_Y+38+i*46, a=0.16-i*0.018;
+    if(y>wy1) break;
+    ctx.fillStyle='rgba(120,80,150,'+Math.max(0.02,a)+')';
+    for(let x=Math.floor(wx0/210)*210;x<wx1;x+=210){
+      const w=120+((i*37+x*0.11)%90);
+      ctx.fillRect(x+((i*53)%80),y+Math.sin(x*0.004+i)*5,w,3);
+    }
+  }
+  ctx.globalAlpha=1;
+
+  const pits=[]; let cur=0;
+  for(const f of FLOOR){ if(f.x>cur) pits.push({x:cur,w:f.x-cur}); cur=f.x+f.w; }
+  pits.push({x:cur,w:wx1-cur});
+  pits.unshift({x:wx0,w:0-wx0});
+  for(const p of pits){
+    if(p.w<=0) continue;
+    const pg=ctx.createLinearGradient(0,FLOOR_Y,0,FLOOR_Y+130);
+    pg.addColorStop(0,'#0d0716'); pg.addColorStop(.5,'#050309'); pg.addColorStop(1,'#010102');
+    ctx.fillStyle=pg; ctx.fillRect(p.x,FLOOR_Y,p.w,wy1-FLOOR_Y);
+  }
+  for(const f of FLOOR){
+    ctx.fillStyle='#7a4570'; ctx.fillRect(f.x,FLOOR_Y,f.w,7);
+    ctx.fillStyle='#d4786f'; ctx.fillRect(f.x,FLOOR_Y,f.w,3);
+    ctx.fillStyle='rgba(160,110,180,.26)';
+    for(let x=f.x+10;x<f.x+f.w-8;x+=46) ctx.fillRect(x,FLOOR_Y+16,20,2);
+    for(const ex of [f.x,f.x+f.w-6]){
+      const rg=ctx.createLinearGradient(0,FLOOR_Y,0,FLOOR_Y+90);
+      rg.addColorStop(0,'rgba(255,170,125,.55)'); rg.addColorStop(1,'rgba(255,170,125,0)');
+      ctx.fillStyle=rg; ctx.fillRect(ex,FLOOR_Y,6,90);
+    }
+  }
+
+  for(const sp of SPIKES){
+    ctx.save();
+    ctx.shadowColor='rgba(0,0,0,.5)'; ctx.shadowBlur=6; ctx.shadowOffsetY=2;
+    for(let x=sp.x;x<sp.x+sp.w-4;x+=13){
+      const sg=ctx.createLinearGradient(0,FLOOR_Y-24,0,FLOOR_Y);
+      sg.addColorStop(0,'#ffffff'); sg.addColorStop(.55,'#e6d4f0'); sg.addColorStop(1,'#7d5f96');
+      ctx.fillStyle=sg;
+      ctx.beginPath(); ctx.moveTo(x,FLOOR_Y); ctx.lineTo(x+6.5,FLOOR_Y-24); ctx.lineTo(x+13,FLOOR_Y); ctx.fill();
+    }
+    ctx.restore();
+    ctx.fillStyle='#3a2a4d'; ctx.fillRect(sp.x-2,FLOOR_Y-2,sp.w+4,4);
+  }
+
+  if(!lab.crumble.gone){
+    const live=lab.crumble.fuse>0;
+    const shake = live ? Math.sin(frameNo*2.1)*2.2 : 0;
+    ctx.save(); ctx.translate(shake,0);
+    ctx.shadowColor='rgba(0,0,0,.55)'; ctx.shadowBlur=10; ctx.shadowOffsetY=4;
+    const cg=ctx.createLinearGradient(0,CRUMBLE.y,0,CRUMBLE.y+CRUMBLE.h);
+    cg.addColorStop(0, live?'#e8879c':'#8c73b4'); cg.addColorStop(1, live?'#9a4c66':'#54427a');
+    ctx.fillStyle=cg;
+    ctx.beginPath(); ctx.roundRect(CRUMBLE.x,CRUMBLE.y,CRUMBLE.w,CRUMBLE.h,3); ctx.fill();
+    ctx.shadowBlur=0; ctx.shadowOffsetY=0;
+    ctx.fillStyle=live?'#ffc0cd':'#a996ce'; ctx.fillRect(CRUMBLE.x+2,CRUMBLE.y+1,CRUMBLE.w-4,2);
+    if(live){
+      ctx.fillStyle='rgba(0,0,0,.35)';
+      for(let i=1;i<4;i++) ctx.fillRect(CRUMBLE.x+i*CRUMBLE.w/4,CRUMBLE.y+4,2,CRUMBLE.h-6);
+      ctx.fillStyle='#ff8fa6'; ctx.font='700 13px "JetBrains Mono",monospace'; ctx.textAlign='center';
+      ctx.globalAlpha=0.4+0.6*Math.abs(Math.sin(frameNo*0.4));
+      ctx.fillText('!', CRUMBLE.x+CRUMBLE.w/2, CRUMBLE.y-9); ctx.globalAlpha=1;
+    }
+    ctx.restore();
+  }
+
+  const cpAlive = !cfg.cheats || lab.cpTouched < cfg.cpMax;
+  const cpc = cpAlive ? '#3fe0c5' : '#4a4568';
+  ctx.save();
+  if(cpAlive){ ctx.shadowColor=cpc; ctx.shadowBlur=12; }
+  ctx.fillStyle=cpc; ctx.fillRect(CHECKPOINT.x,CHECKPOINT.y,3,CHECKPOINT.h);
+  ctx.beginPath(); ctx.moveTo(CHECKPOINT.x+3,CHECKPOINT.y+2);
+  ctx.lineTo(CHECKPOINT.x+27,CHECKPOINT.y+11); ctx.lineTo(CHECKPOINT.x+3,CHECKPOINT.y+20); ctx.fill();
+  ctx.restore();
+  if(cfg.cheats){
+    ctx.fillStyle=cpAlive?'#3fe0c5':'#6b6490'; ctx.font='700 16px "JetBrains Mono",monospace';
+    ctx.textAlign='center';
+    ctx.fillText(cpAlive ? (cfg.cpMax-lab.cpTouched)+' LEFT' : 'BURNED OUT', CHECKPOINT.x+10, CHECKPOINT.y-14);
+  }
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(WALL.x, wy1);
+  const notch=[2,-11,5,-24,-4,9,-16,3,-29,6,-8,12,-3,-18,4,-9,7,-2,5];
+  for(let i=0;i<notch.length;i++){
+    const px=WALL.x + i*(WALL.w/(notch.length-1));
+    ctx.lineTo(px, WALL.y+notch[i]);
+  }
+  ctx.lineTo(WALL.x+WALL.w, wy1); ctx.closePath();
+  const rg=ctx.createLinearGradient(WALL.x,0,WALL.x+WALL.w,0);
+  rg.addColorStop(0,'#4a2c56'); rg.addColorStop(.18,'#2d1a3f'); rg.addColorStop(1,'#1a1029');
+  ctx.fillStyle=rg; ctx.fill();
+  ctx.clip();
+  ctx.fillStyle='rgba(255,150,120,.16)'; ctx.fillRect(WALL.x,WALL.y-20,5,WALL.h+20);
+  ctx.fillStyle='rgba(0,0,0,.22)';  for(let y=WALL.y+30;y<wy1;y+=52)
+    for(let k=0;k<2;k++)
+      ctx.fillRect(WALL.x+10+((y*7+k*140)%150), y+k*22+Math.sin(y*0.05+k)*5,
+                   44+((y*13+k*31)%70), 4);
+  ctx.restore();
+  const sg2=ctx.createLinearGradient(WALL.x-30,0,WALL.x+30,0);
+  sg2.addColorStop(0,'#3a2249'); sg2.addColorStop(1,'#26152f');
+  ctx.fillStyle=sg2;
+  ctx.beginPath(); ctx.moveTo(WALL.x-34,FLOOR_Y+1);
+  ctx.quadraticCurveTo(WALL.x-6,FLOOR_Y-9,WALL.x+18,FLOOR_Y-22);
+  ctx.lineTo(WALL.x+18,FLOOR_Y+1); ctx.closePath(); ctx.fill();
+
+  const f=lab.flag, fy=f.y;
+  ctx.save();
+  const fc = f.away && !f.coming ? '#ff6b7d' : css('--warn');
+  ctx.shadowColor=fc; ctx.shadowBlur=f.coming?26:14;
+  ctx.fillStyle=fc; ctx.fillRect(f.x-2,fy,4,64);
+  ctx.beginPath(); ctx.moveTo(f.x+2,fy+2);
+  for(let i=0;i<=6;i++){
+    const t=i/6, wv=Math.sin(frameNo*0.09 - t*3.1)*3.4*t;
+    ctx.lineTo(f.x+2+t*32, fy+3+t*4+wv);
+  }
+  for(let i=6;i>=0;i--){
+    const t=i/6, wv=Math.sin(frameNo*0.09 - t*3.1)*3.4*t;
+    ctx.lineTo(f.x+2+t*32, fy+21+t*(-4)+wv);
+  }
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+  if(cfg.cheats){
+    ctx.font='700 16px "JetBrains Mono",monospace'; ctx.textAlign='center'; ctx.fillStyle=fc;
+    if(f.coming) ctx.fillText('COMING BACK', f.x, fy-16);
+    else if(f.away) ctx.fillText('NOPE', f.x, fy-16);
+  }
+
+  const p=lab.p, acc=css(lab.color);
+  let groundY=null;
+  for(const fl of FLOOR) if(p.x+PW>fl.x && p.x<fl.x+fl.w) groundY=FLOOR_Y;
+  if(!lab.crumble.gone && p.x+PW>CRUMBLE.x && p.x<CRUMBLE.x+CRUMBLE.w && p.y<CRUMBLE.y) groundY=CRUMBLE.y;
+  if(groundY!==null && p.y+PH<=groundY+2){
+    const drop=Math.max(0,groundY-(p.y+PH));
+    ctx.save(); ctx.globalAlpha=Math.max(0,0.42-drop*0.0035); ctx.fillStyle='#000';
+    ctx.beginPath(); ctx.ellipse(p.x+PW/2,groundY+2,PW*0.55+drop*0.05,3.4,0,0,7); ctx.fill();
+    ctx.restore();
+  }
+  const sy=Math.max(0.82,Math.min(1.18,1+p.vy*0.012));
+  const sx=1/sy;
+  ctx.save();
+  ctx.translate(p.x+PW/2, p.y+PH);
+  ctx.scale(sx,sy);
+  ctx.translate(-PW/2,-PH);
+  ctx.shadowColor=acc; ctx.shadowBlur=22;
+  ctx.fillStyle=acc;
+  ctx.beginPath(); ctx.roundRect(-2.5,-2.5,PW+5,PH+5,5); ctx.fill();
+  ctx.shadowBlur=0; ctx.fillStyle='#0e0a1c';
+  ctx.beginPath(); ctx.roundRect(0,0,PW,PH,3.5); ctx.fill();
+  ctx.fillStyle=acc;
+  const look = p.vx<-0.2?-1:1;
+  ctx.fillRect(look>0?13:5, 7, 4, 4);
+  const a=lab.anger;
+  if(a>70){ ctx.fillRect(5,18,2,2); ctx.fillRect(15,18,2,2); ctx.fillRect(6,21,10,2); }
+  else ctx.fillRect(6,19,10,2);
+  ctx.restore();
+
+  {
+    const txt=(lab.prevRandom?'!  ':'')+ACT_NAME[lab.prevA];
+    ctx.font='700 15px "JetBrains Mono",monospace'; ctx.textAlign='center';
+    const tw=ctx.measureText(txt).width;
+    ctx.fillStyle = lab.prevRandom ? 'rgba(255,45,69,.9)' : 'rgba(10,10,22,.62)';
+    ctx.beginPath(); ctx.roundRect(p.x+PW/2-tw/2-8, p.y-32, tw+16, 21, 10); ctx.fill();
+    ctx.fillStyle = lab.prevRandom ? '#fff' : 'rgba(233,238,249,.82)';
+    ctx.fillText(txt, p.x+PW/2, p.y-17);
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.beginPath(); ctx.rect(vp.x,vp.y,vp.w,vp.h); ctx.clip();
+  const vg=ctx.createRadialGradient(vp.x+vp.w/2,vp.y+vp.h*0.48,vp.h*0.35,
+                                    vp.x+vp.w/2,vp.y+vp.h*0.48,vp.w*0.72);
+  vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,.42)');
+  ctx.fillStyle=vg; ctx.fillRect(vp.x,vp.y,vp.w,vp.h);
+  ctx.restore();
+  return cam;
+}
+
+/* decision map: the greedy action in every cell of the level, for the grounded slice */
+let showMap=false;
+function drawMap(lab,cam){
+  const {s,ox,oy}=cam;
+  ctx.save(); ctx.translate(ox,oy); ctx.scale(s,s);
+  let vmax=0.001;
+  for(let gx=0;gx<CX;gx++)for(let gy=0;gy<CY;gy++){
+    const st=((gx*CY+gy)*3)*STILL_BUCKETS;    if(lab.agent.seen[st]) vmax=Math.max(vmax,Math.abs(lab.agent.bestVal(st)));
+  }
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  for(let gx=0;gx<CX;gx++)for(let gy=0;gy<CY;gy++){
+    const st=((gx*CY+gy)*3)*STILL_BUCKETS;
+    if(!lab.agent.seen[st]) continue;
+    const v=lab.agent.bestVal(st), a=lab.agent.best(st);
+    const t=Math.max(0,Math.min(1,(v/vmax+1)/2));
+    const x=gx*CELL+CELL/2, y=gy*CELL+CELL/2;
+    ctx.fillStyle = v>=0 ? `rgba(63,224,197,${0.25+0.6*t})` : `rgba(255,77,94,${0.25+0.5*(1-t)})`;
+    ctx.font='700 16px "JetBrains Mono",monospace';
+    ctx.fillText(['●','←','→','↑','↖','↗'][a], x, y);
+  }
+  ctx.restore();
+}
+
+/* HUD, anger bar and quit button are painted INTO the canvas, so the picture is complete
+   on its own. Two columns with a reserved gutter; the counters wrap rather than overlap. */
+function drawHUD(lab,vp,big){
+  const S=Math.min(vp.h, vp.w*0.55);
+  const P=Math.max(10,Math.round(S*0.034));
+  const F=Math.max(9,Math.round(S*(big?0.026:0.030)));
+  ctx.save(); ctx.translate(vp.x,vp.y);
+  ctx.textBaseline='alphabetic';
+
+  const sc=ctx.createLinearGradient(0,0,0,vp.h*0.30);
+  sc.addColorStop(0,'rgba(6,4,14,.62)'); sc.addColorStop(1,'rgba(6,4,14,0)');
+  ctx.fillStyle=sc; ctx.fillRect(0,0,vp.w,vp.h*0.30);
+
+  const showAnger = !lab.calm;
+  const rightW = showAnger ? Math.max(F*12, Math.min(vp.w*0.30, vp.h*0.85)) : 0;
+  const leftMax = vp.w - 2*P - (showAnger ? rightW + P*1.6 : 0);
+
+  const LAB=F*0.86, VAL=F*1.95, GH=F*3.1, GAP=F*1.9;
+  let x=P, y=P;
+  const stat=(label,value,col)=>{
+    ctx.font='700 '+VAL+'px "JetBrains Mono",monospace';
+    const wv=ctx.measureText(value).width;
+    ctx.font='600 '+LAB+'px "JetBrains Mono",monospace';
+    const wl=ctx.measureText(label).width;
+    const w=Math.max(wv,wl);
+    if(x>P && x-P+w>leftMax){ x=P; y+=GH+F*0.7; }
+    ctx.textAlign='left';
+    ctx.fillStyle='rgba(180,190,220,.62)'; ctx.fillText(label,x,y+LAB);
+    ctx.font='700 '+VAL+'px "JetBrains Mono",monospace';
+    ctx.fillStyle=col||css('--ink'); ctx.fillText(value,x,y+LAB+VAL*1.02);
+    x+=w+GAP;
+  };
+  if(lab.label){
+    ctx.font='700 '+(F*1.15)+'px "JetBrains Mono",monospace'; ctx.textAlign='left';
+    const w=ctx.measureText(lab.label).width;
+    ctx.fillStyle=css(lab.color);
+    ctx.fillRect(x,y+F*0.2,F*0.28,GH*0.62);
+    ctx.fillText(lab.label,x+F*0.75,y+F*1.35);
+    x+=w+F*0.75+GAP;
+  }
+  stat('ATTEMPT', String(lab.attempt+1), css('--ink'));
+  stat('BEST',    lab.bestPct+'%',       css('--warn'));
+  stat('DEATHS',  String(lab.deaths),    'rgba(233,238,249,.78)');
+  if(!lab.calm)
+    stat('EXPLORE', Math.round((lab.lastEps||0)*100)+'%',
+         lab.prevRandom?css('--angry'):'rgba(233,238,249,.78)');
+  if(lab.calm) stat('EXPLORE', (cfg.calmEps*100).toFixed(1)+'%', css('--calm'));
+
+  if(showAnger){
+    const bx=vp.w-P-rightW, bh=F*1.15;
+    let by=P;
+    ctx.font='600 '+LAB+'px "JetBrains Mono",monospace'; ctx.textAlign='left';
+    ctx.fillStyle='rgba(180,190,220,.62)'; ctx.fillText('ANGER',bx,by+LAB);
+    by += LAB+F*0.55;
+    ctx.fillStyle='rgba(8,6,18,.7)';
+    ctx.beginPath(); ctx.roundRect(bx,by,rightW,bh,bh/2); ctx.fill();
+    const fillw=Math.max(0,rightW*lab.anger/100);
+    if(fillw>2){
+      const g=ctx.createLinearGradient(bx,0,bx+rightW,0);
+      g.addColorStop(0,'#ffc857'); g.addColorStop(.55,'#ff8a4c'); g.addColorStop(1,'#ff2d45');
+      ctx.save(); ctx.beginPath(); ctx.roundRect(bx,by,rightW,bh,bh/2); ctx.clip();
+      ctx.fillStyle=g; ctx.fillRect(bx,by,fillw,bh);
+      if(lab.anger>85){ ctx.globalAlpha=0.25+0.25*Math.sin(frameNo*0.25); ctx.fillStyle='#fff'; ctx.fillRect(bx,by,fillw,bh); }
+      ctx.restore();
+      ctx.save(); ctx.shadowColor='#ff6a4a'; ctx.shadowBlur=bh*0.9;
+      ctx.fillStyle='rgba(255,180,120,.9)'; ctx.fillRect(bx+fillw-2,by+2,2,bh-4); ctx.restore();
+    }
+    ctx.strokeStyle='rgba(255,255,255,.16)'; ctx.lineWidth=1;
+    for(let t=25;t<100;t+=25){ ctx.beginPath(); ctx.moveTo(bx+rightW*t/100,by+2); ctx.lineTo(bx+rightW*t/100,by+bh-2); ctx.stroke(); }
+    by += bh + F*0.5;
+    ctx.textAlign='right';
+    ctx.font='700 '+(F*1.95)+'px "JetBrains Mono",monospace';
+    ctx.fillStyle=css('--ink'); ctx.fillText(Math.round(lab.anger),vp.w-P-ctx.measureText(' /100').width,by+F*1.95);
+    ctx.font='600 '+(F*1.1)+'px "JetBrains Mono",monospace';
+    ctx.fillStyle='rgba(180,190,220,.55)'; ctx.fillText(' /100',vp.w-P,by+F*1.95);
+    by += F*2.5;
+    if(cfg.quitOn){
+      const dl=lab.deathsLeft(), hot=lab.anger>85;
+      ctx.font='700 '+(F*0.86)+'px "JetBrains Mono",monospace'; ctx.textAlign='right';
+      ctx.fillStyle = dl<=10 ? css('--angry') : 'rgba(180,190,220,.62)';
+      ctx.fillText(dl+' DEATHS LEFT', vp.w-P, by+F*0.7);
+      const qw=F*5.6, qh=F*1.9, qx=vp.w-P-qw, qy=by+F*1.35;
+      ctx.globalAlpha = hot ? 0.8+0.2*Math.sin(frameNo*0.3) : 0.46;
+      ctx.fillStyle = lab.quit?'#ff2d45':'rgba(34,12,24,.9)';
+      ctx.strokeStyle = hot||lab.quit?css('--angry'):'rgba(140,60,78,.85)'; ctx.lineWidth=Math.max(1,F*0.09);
+      ctx.beginPath(); ctx.roundRect(qx,qy,qw,qh,F*0.42); ctx.fill(); ctx.stroke();
+      ctx.globalAlpha=1;
+      ctx.font='700 '+(F*0.92)+'px "JetBrains Mono",monospace'; ctx.textAlign='center';
+      ctx.fillStyle = lab.quit?'#2a0209':(hot?css('--angry'):'rgba(210,130,148,.8)');
+      ctx.fillText('QUIT',qx+qw/2,qy+qh*0.68);
+    }
+  }
+
+  if(lab.flash>0){
+    lab.flash--;
+    ctx.textAlign='center';
+    ctx.fillStyle='rgba(10,10,22,.55)'; ctx.fillRect(0,0,vp.w,vp.h);
+    ctx.font='700 '+(F*2.6)+'px "JetBrains Mono",monospace';
+    ctx.fillStyle = lab.quit?css('--angry'):css('--warn');
+    ctx.fillText(lab.flashText, vp.w/2, vp.h/2);
+    if(!lab.quit && lab.winAttempt){
+      ctx.font='600 '+(F*1.0)+'px "JetBrains Mono",monospace'; ctx.fillStyle=css('--ink');
+      ctx.fillText('attempt '+lab.winAttempt+'  ·  anger '+Math.round(Math.min(100,lab.anger+cfg.angerWin))+
+                   '  ·  the winning move was '+(lab.winWasRandom?'RANDOM':'its plan'), vp.w/2, vp.h/2+F*2.0);
+    }
+  }
+  ctx.restore();
+}
+
+let showGraph=false;
+function drawGraph(vp){
+  const P=Math.round(vp.h*0.04), F=Math.max(10,Math.round(vp.h*0.075));
+  ctx.save(); ctx.translate(vp.x,vp.y);
+  ctx.fillStyle='rgba(10,15,30,.86)'; ctx.strokeStyle='rgba(51,64,110,.9)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.roundRect(0,0,vp.w,vp.h,F*0.7); ctx.fill(); ctx.stroke();
+  const L=P*2.6, R=P, T=P*1.4, B=P*1.8;
+  const labs=[labA,labB].filter(Boolean);
+  const n=Math.max(2,...labs.map(l=>l.histBest.length));
+  const X=i=>L+i/(n-1)*(vp.w-L-R), Y=v=>(vp.h-B)-v/100*(vp.h-B-T);
+  ctx.strokeStyle='rgba(35,46,80,.9)'; ctx.font=F*0.62+'px "JetBrains Mono",monospace'; ctx.textAlign='right';
+  for(const v of [0,50,100]){ ctx.beginPath(); ctx.moveTo(L,Y(v)); ctx.lineTo(vp.w-R,Y(v)); ctx.stroke();
+    ctx.fillStyle=css('--muted'); ctx.fillText(v,L-F*0.4,Y(v)+F*0.22); }
+  const line=(arr,col,dash)=>{
+    if(arr.length<2) return;
+    ctx.save(); ctx.setLineDash(dash||[]); ctx.strokeStyle=col; ctx.lineWidth=Math.max(1.6,vp.h*0.008);
+    ctx.beginPath(); arr.forEach((v,i)=>{const x=X(i),y=Y(v); i?ctx.lineTo(x,y):ctx.moveTo(x,y);});
+    ctx.stroke(); ctx.restore();
+  };
+  line(labA.histBest, css('--warn'));
+  line(labA.histAnger, css('--angry'));
+  if(labB) line(labB.histBest, css('--calm'), [6,5]);
+  ctx.textAlign='left'; ctx.font='600 '+F*0.62+'px "JetBrains Mono",monospace';
+  ctx.fillStyle=css('--warn'); ctx.fillText('best distance %',L,vp.h-P*0.5);
+  ctx.fillStyle=css('--angry'); ctx.fillText('anger',L+F*7.2,vp.h-P*0.5);
+  if(labB){ ctx.fillStyle=css('--calm'); ctx.fillText('calm agent',L+F*11,vp.h-P*0.5); }
+  ctx.textAlign='right'; ctx.fillStyle=css('--muted');
+  ctx.fillText('attempt '+n, vp.w-R, vp.h-P*0.5);
+  ctx.restore();
+}
+
+
+/* ---------- main loop ------------------------------------------------------------------
+   The run has two acts and switches between them by itself: the fair level until
+   cfg.cheatsAt attempts, then the three cheats, from the brain it just built. */
+let labA=null, labB=null, humanLab=null, snapshot=null, cheatsOn=false;
+let running=true, steps=16, frameNo=0, split=false, noHud=false;
+
+function boot(){
+  SEED=$('seed').value.trim()||'rage-5';
+  cfg.cheats=false; cheatsOn=false; snapshot=null;
+  labA=new Lab('a','', '--angry', false, null);
+  labB=null; split=false; humanLab=null;
+  $('play').textContent='Play it yourself';
+}
+
+function maybeSwitch(){
+  if(cheatsOn || !labA || labA.attempt < cfg.cheatsAt) return;
+  cheatsOn=true; cfg.cheats=true;
+  snapshot=labA.agent.clone();
+  const at=labA.attempt, d=labA.deaths;
+  labA=new Lab('a','','--angry',false,snapshot.clone());
+  labA.attempt=at; labA.deaths=d; labA.cheatStart=at;
+  labA.flash=170; labA.flashText='THE RULES JUST CHANGED';
+}
+
+function advance(){
+  for(const l of [labA,labB]){
+    if(!l||l.quit) continue;
+    for(let i=0;i<steps;i++){ l.step(); if(l.quit) break; }
+  }
+  maybeSwitch();
+}
+
+function tick(){
+  frameNo++;
+  fit();
+  if(running){ if(humanLab) humanLab.step(); else advance(); }
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.fillStyle='#0a0a14'; ctx.fillRect(0,0,CW,CH);
+
+  const gh = showGraph ? Math.round(CH*0.26) : 0;
+  const areaH = CH-gh;
+  const shown = humanLab||labA;
+
+  if(split && labB){
+    const vpA={x:0,y:0,w:CW,h:areaH/2}, vpB={x:0,y:areaH/2,w:CW,h:areaH/2};
+    const cA=camera(vpA); drawWorld(labA,cA); if(showMap) drawMap(labA,cA);
+    if(!noHud) drawHUD(labA,vpA,true);
+    const cB=camera(vpB); drawWorld(labB,cB); if(showMap) drawMap(labB,cB);
+    if(!noHud) drawHUD(labB,vpB,true);
+    ctx.fillStyle='rgba(51,64,110,.9)'; ctx.fillRect(0,areaH/2-1,CW,2);
+  }else{
+    const vp={x:0,y:0,w:CW,h:areaH};
+    const c=camera(vp); drawWorld(shown,c); if(showMap) drawMap(shown,c);
+    if(!noHud) drawHUD(shown,vp,false);
+  }
+  if(showGraph) drawGraph({x:CW*0.03,y:areaH+CH*0.012,w:CW*0.94,h:gh-CH*0.03});
+
+  if(frameNo%15===0 && labA)
+    $('phase').textContent = humanLab ? 'your turn'
+      : cheatsOn ? `cheats on · attempt ${labA.attempt-labA.cheatStart+1} of the unfair level`
+                 : `fair level · ${Math.max(0,cfg.cheatsAt-labA.attempt)} attempts until the cheats`;
+  requestAnimationFrame(tick);
+}
+
+/* ---------- play it yourself: same level, same cheats, a human instead of a table ------- */
+const keys={};
+addEventListener('keydown',e=>{ if(!humanLab)return;
+  if(['ArrowLeft','KeyA'].includes(e.code))keys.l=1;
+  if(['ArrowRight','KeyD'].includes(e.code))keys.r=1;
+  if(['Space','ArrowUp','KeyW'].includes(e.code)){keys.j=1;e.preventDefault();}
+});
+addEventListener('keyup',e=>{
+  if(['ArrowLeft','KeyA'].includes(e.code))keys.l=0;
+  if(['ArrowRight','KeyD'].includes(e.code))keys.r=0;
+  if(['Space','ArrowUp','KeyW'].includes(e.code))keys.j=0;
+});
+function startHuman(){
+  const l=new Lab('you','YOU  ·  ← → SPACE','--warn',true,new Agent(null));
+  l.step=function(){
+    const dx=(keys.r?1:0)-(keys.l?1:0);
+    this.prevA = keys.j ? (dx>0?5:dx<0?4:3) : (dx>0?2:dx<0?1:0);
+    this.prevRandom=false; this.decTick=REPEAT;
+    Lab.prototype.step.call(this);
+  };
+  l.agent.learn=()=>{};
+  humanLab=l; $('play').textContent='Back to the AI';
+}
+function stopHuman(){ humanLab=null; $('play').textContent='Play it yourself'; }
+$('play').addEventListener('click',()=>humanLab?stopHuman():startHuman());
+
+/* ---------- controls -------------------------------------------------------------------- */
+const segPick=(id,fn)=>$(id).addEventListener('click',e=>{
+  const s=e.target.closest('.seg'); if(!s)return;
+  [...$(id).children].forEach(x=>x.classList.remove('on')); s.classList.add('on'); fn(s.dataset);
+});
+segPick('speed',d=>steps=+d.s);
+segPick('quit',d=>cfg.quitOn=d.q==='1');
+segPick('flagruns',d=>cfg.flagRuns=d.f==='1');
+
+const sl=(id,fn,fmt)=>{const e=$(id),v=$(id+'-val');
+  e.addEventListener('input',()=>{fn(+e.value); v.textContent=fmt(+e.value);});};
+sl('alpha',v=>cfg.alpha=v/100,     v=>(v/100).toFixed(2));
+sl('cap',  v=>cfg.cap=v,           v=>v);
+sl('ad',   v=>cfg.angerDeath=v/10, v=>(v/10).toFixed(1));
+sl('ar',   v=>cfg.angerRecord=v/10,v=>(v/10).toFixed(1));
+sl('ac',   v=>cfg.angerCool=v/100, v=>(v/100).toFixed(2));
+sl('emax', v=>cfg.epsMax=v/100,    v=>v+'%');
+sl('epow', v=>cfg.epsPow=v,        v=>v);
+sl('stick',v=>cfg.stick=v,         v=>v);
+sl('ceps', v=>cfg.calmEps=v/1000,  v=>(v/10).toFixed(1)+'%');
+sl('cat',  v=>cfg.cheatsAt=v,      v=>v);
+sl('cpn',  v=>cfg.cpMax=v,         v=>v);
+sl('fuse', v=>cfg.fuse=v,          v=>v);
+sl('fwait',v=>cfg.flagWait=v,      v=>v);
+sl('fspd', v=>cfg.flagSpeed=v/10,  v=>(v/10).toFixed(1));
+
+$('pause').addEventListener('click',e=>{running=!running;e.target.textContent=running?'Pause':'Resume';});
+$('restart').addEventListener('click',()=>{stopHuman();boot();});
+$('map').addEventListener('click',()=>showMap=!showMap);
+$('graph').addEventListener('click',()=>showGraph=!showGraph);
+
+/* The calm agent is cloned from the brain as it was when the cheats came on, not from the
+   brain as it is now — otherwise it inherits the answer and there is no control run. */
+$('vs').addEventListener('click',()=>{
+  if(!labA) return;
+  labA.label='ANGRY';
+  labB=new Lab('a','CALM','--calm',true,(snapshot||labA.agent).clone());
+  labB.attempt=labA.attempt; labB.deaths=labA.deaths; labB.cheatStart=labA.cheatStart;
+  split=true;
+});
+$('single').addEventListener('click',()=>{labB=null;split=false;if(labA)labA.label='';});
+
+/* ---------- fullscreen view + keys ------------------------------------------------------ */
+const hint=$('hint'); let hintTimer, hintSticky=false, curTimer;
+function showHint(){ hint.classList.add('show'); clearTimeout(hintTimer);
+  if(!hintSticky) hintTimer=setTimeout(()=>hint.classList.remove('show'),2800); }
+function armCursor(){
+  document.body.style.cursor=''; clearTimeout(curTimer);
+  if(document.body.classList.contains('big'))
+    curTimer=setTimeout(()=>{ if(document.body.classList.contains('big')) document.body.style.cursor='none'; },1600);
+}
+addEventListener('mousemove',armCursor);
+function cycleSpeed(){
+  const segs=[...$('speed').children];
+  segs[(segs.findIndex(s=>s.classList.contains('on'))+1)%segs.length].click();
+}
+addEventListener('keydown',e=>{
+  if(/^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
+  switch(e.key.toLowerCase()){
+    case 'r': document.body.classList.toggle('big'); fit(); armCursor(); showHint(); break;
+    case 'p': $('pause').click(); break;
+    case 's': cycleSpeed(); break;
+    case 'v': split?$('single').click():$('vs').click(); break;
+    case 'm': showMap=!showMap; break;
+    case 'g': showGraph=!showGraph; break;
+    case 'h': noHud=!noHud; break;
+    case '?': hintSticky=!hintSticky; showHint(); break;
+    default: return;
+  }
+});
+
+/* URL flags, e.g. index.html#big&seed=rage-6&speed=220&cheatsat=300 */
+boot(); fit();
+(function(){
+  const p=location.hash+location.search;
+  const seed=p.match(/seed=([\w-]+)/i); if(seed){ $('seed').value=seed[1]; boot(); }
+  const sp=p.match(/speed=(\d+)/i);
+  if(sp){ const s=[...$('speed').children].find(x=>x.dataset.s===sp[1]); if(s) s.click(); }
+  const ca=p.match(/cheatsat=(\d+)/i);
+  if(ca){ cfg.cheatsAt=+ca[1]; $('cat').value=ca[1]; $('cat-val').textContent=ca[1]; }
+  if(/\bgraph\b/i.test(p)) showGraph=true;
+  if(/\bbig\b/i.test(p)){ document.body.classList.add('big'); fit(); armCursor(); }
+})();
+tick();
+</script>
