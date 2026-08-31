@@ -2,7 +2,7 @@
 
 A reinforcement learning agent with an anger meter and a quit button, playing a platformer that cheats. The angrier it gets, the less it listens to its own plan — and that turns out to be the only reason it ever finishes.
 
-**[▶ Watch the video](https://youtu.be/0XTSb80FI2o)** · **[🎮 Try the simulation](https://rage-ai.vercel.app/)**
+**[▶ Watch the video](https://youtu.be/0XTSb80FI2o)** · **[🎮 Try the simulation](https://rage-ai-game.vercel.app/)**
 
 > One HTML file. No dependencies, no build step, no framework. Open it and it runs.
 
